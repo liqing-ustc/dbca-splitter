@@ -9,6 +9,7 @@ Usage:
     [--max_compounds=<max_compounds>]
     [--seed=<seed>]
     [--num_processes=<num_processes> --verbose]
+    [--n_sample_per_step=<n_sample_per_step>]
 
 
 Options:

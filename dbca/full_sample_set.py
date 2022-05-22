@@ -14,7 +14,7 @@ class FullSampleSet(SampleSet):
     """
     Represents the full pool of Samples from which the train and test splits will be created.
     """
-    def __init__(self, sample_store: SampleStore, top_n_compounds: int = 100000):
+    def __init__(self, sample_store: SampleStore, top_n_compounds: int = 100000, use_compound_weight: bool = True):
         """[summary]
 
         Args:
@@ -26,13 +26,18 @@ class FullSampleSet(SampleSet):
         # 
         self._sample_store = sample_store
         self.top_n_compounds = top_n_compounds
+        self.use_compound_weight = use_compound_weight
                 
         logger.info(f"Loading {sample_store.size} samples...")
         self.load_samples(sample_store.sample_ids)
-        filtered = self.filter_compounds(top_n=top_n_compounds) # keeping for debugging purposes
-        total_compounds = len(filtered) + len(self.compound_weights)
-        logger.info(f"Keeping {min(top_n_compounds, len(self.compound_weights))}/{total_compounds}"
-                    " highest weighted compounds.")
+        total_compounds = len(self.compound_weights)
+        if use_compound_weight:
+            filtered = self.filter_compounds(top_n=top_n_compounds) # keeping for debugging purposes
+            logger.info(f"Keeping {min(top_n_compounds, len(self.compound_weights))}/{total_compounds}"
+                        " highest weighted compounds.")
+        else:
+            logger.info(f"Keeping all {total_compounds} compounds since not using compound weights.")
+
         self._atom_distribution = self.get_atom_distribution()
         self._compound_distribution = self.get_compound_distribution()
             
@@ -159,6 +164,9 @@ class FullSampleSet(SampleSet):
         Returns:
             float: Compound weight in sample.
         """
+        if not self.use_compound_weight:
+            return 1.0
+
         sample_compound_occs = self.local_compounds_by_samp[sample_id][compound_type]
         max_weight = 0.0
         for c_uid in sample_compound_occs:
@@ -167,8 +175,8 @@ class FullSampleSet(SampleSet):
             max_weight = weight if weight > max_weight else max_weight
         
         return max_weight
-    
-    
+
+
     def pop_compound(self, compound_type: str) -> Mapping:
         """ 
         Remove compound of type `compound_type` from records, and set its weight to 0.

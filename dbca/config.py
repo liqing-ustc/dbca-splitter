@@ -73,6 +73,8 @@ class DBCASplitterConfig(JSONConfig):
     num_processes: int = 1
     save_progress: bool = False
     verbose: bool = False
+    n_sample_per_step: int = 1 # how many samples to add at each step
+    use_compound_weight: bool = True # whether to compute compound weights based on their super-compounds
     
     def __post_init__(self):
         # type checking hack based on https://stackoverflow.com/questions/58992252/how-to-enforce-dataclass-fields-types
@@ -81,11 +83,12 @@ class DBCASplitterConfig(JSONConfig):
                 current_type = type(self.__dict__[name])
                 self.__dict__[name] = literal_eval(self.__dict__[name])
                 
-        self._ratio = np.round(self.n_train / self.n_test)
-        # fix train / test ratio to be whole number
-        if self.n_train % self.n_test != 0:
-            logger.warning(f"train/test set ratio = {self.n_train / self.n_test}, rounding to {self._ratio}")
-            self.n_test = int(self.n_train // self._ratio)
+        self._ratio = self.n_train / self.n_test
+        # self._ratio = np.round(self.n_train / self.n_test)
+        # # fix train / test ratio to be whole number
+        # if self.n_train % self.n_test != 0:
+        #     logger.warning(f"train/test set ratio = {self.n_train / self.n_test}, rounding to {self._ratio}")
+        #     self.n_test = int(self.n_train // self._ratio)
                         
             
         # randomize seed if not defined

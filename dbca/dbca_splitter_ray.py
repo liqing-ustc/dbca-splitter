@@ -63,7 +63,7 @@ class DBCASplitterRay(DBCASplitter):
         """
         
         all_scores = []
-        logger.info(f"Searching for new sample using {self.config.num_processes} processes...")
+        # logger.info(f"Searching for new sample using {self.config.num_processes} processes...")
         update_split = sample_set_to_update.split_type.value
         other_split = other_sample_set.split_type.value
         all_scores = _peek_sample_ray(self, update_split, other_split)
@@ -114,8 +114,9 @@ def _peek_sample_ray(split_generator: DBCASplitter, split_to_update: str,
     score_mapping = {}
     remaining_ids = []
     all_scores = []
-    logger.info("Submitting ray jobs...")
-    for i,batch in tqdm(enumerate(list(chunks(s_id_list, pool_size))), total=pool_size):
+    # logger.info("Submitting ray jobs...")
+    # for i,batch in tqdm(enumerate(list(chunks(s_id_list, pool_size))), total=pool_size):
+    for i,batch in enumerate(list(chunks(s_id_list, pool_size))):
         config = configs[i]
         update_split_single = update_split_copy[i]
         other_split_single = other_split_copy[i]
@@ -150,7 +151,8 @@ def peek_ray_sid_list(sample_ids: List[str], sample_set_to_update: SplitSampleSe
                          other_sample_set: SplitSampleSet, 
                          dbca_config: DBCASplitterConfig, full_sample_set: FullSampleSet) -> float:
     scores = []
-    for sample_id in tqdm(sample_ids, total=len(sample_ids)):
+    # for sample_id in tqdm(sample_ids, total=len(sample_ids)):
+    for sample_id in sample_ids:
         
         scores.append(peek_ray(sample_id, sample_set_to_update,
                             other_sample_set,

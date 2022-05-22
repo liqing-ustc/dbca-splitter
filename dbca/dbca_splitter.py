@@ -1,7 +1,7 @@
 from typing import List, Tuple
 import logging
 import numpy as np
-from tqdm import tqdm
+from tqdm import tqdm, trange
 import time
 import json
 from pathlib import Path
@@ -67,16 +67,18 @@ class DBCASplitter:
             samples (List[Sample]): Full set of samples to create splits from.
             config (DBCASplitterConfig, optional): Optional settings for split generation.
         """
-        self.sample_store = SampleStore(samples)
-        self.full_sample_set = FullSampleSet(sample_store=self.sample_store)
-        self.sample_splits = {s_id: None for s_id in self.full_sample_set.sample_ids}
-        self.unused_sample_ids = set(self.sample_splits.keys())
-        
-        
         self.config = config if config else DBCASplitterConfig()
         self.logger = logging.getLogger(__name__)
         self.train_set = SplitSampleSet(split="train")
         self.test_set = SplitSampleSet(split="test")
+
+        self.sample_store = SampleStore(samples)
+        self.full_sample_set = FullSampleSet(sample_store=self.sample_store, 
+                                top_n_compounds=self.config.max_compounds,
+                                use_compound_weight=self.config.use_compound_weight)
+        self.sample_splits = {s_id: None for s_id in self.full_sample_set.sample_ids}
+        self.unused_sample_ids = set(self.sample_splits.keys())
+        
         
         # set seed for reproduceability
         np.random.seed(self.config.seed)
@@ -140,9 +142,7 @@ class DBCASplitter:
     @property
     def train_step(self) -> bool:
         """ Return True if current step should add sample to training set and False o.w. (should add to test set)"""
-        if (self.train_set.size % self.target_train_test_ratio != 0):
-            return True
-        elif self.curr_train_test_ratio <= self.target_train_test_ratio:
+        if self.curr_train_test_ratio <= self.target_train_test_ratio:
             return True
         else:
             return False
@@ -262,7 +262,8 @@ class DBCASplitter:
         debug_infos = {"best_id": best_id,
                        "best_score": best_score,
                        "all_scores": all_scores}
-        return best_id, debug_infos
+        sorted_ids = [x[0] for x in sorted_scores]
+        return sorted_ids, best_id, debug_infos
 
         
     def peek_sample(self, sample_id: str, sample_set_to_update: SplitSampleSet,
@@ -361,23 +362,29 @@ class DBCASplitter:
         self.init_build()
         
         # add random init to initialize train set
-        chosen_sample_id = np.random.choice(list(self.unused_sample_ids))
-        self.logger.info(f"Choosing random first sample: {chosen_sample_id}...")
-        self.add_sample_to_set(chosen_sample_id, self.train_set)
+        if self.train_set.size == 0:
+            chosen_sample_id = np.random.choice(list(self.unused_sample_ids))
+            self.logger.info(f"Choosing random first sample: {chosen_sample_id}...")
+            self.add_sample_to_set(chosen_sample_id, self.train_set)
         
         
         # main split generation loop
         self.logger.info("Starting to create splits...")
-        for i in tqdm(range(self.steps_left), total=self.steps_left):
+        for i in trange(0, self.steps_left, self.config.n_sample_per_step):
             tic = time.perf_counter()
             if self.train_step:
-                best_id, debug_infos = self.find_best_sample(self.train_set, self.test_set)
-                self.add_sample_to_set(best_id, self.train_set)
-                split = self.train_set.split_type.value
+                set_1, set_2 = self.train_set, self.test_set
+                target_size = self.config.n_train
             else:
-                best_id, debug_infos = self.find_best_sample(self.test_set, self.train_set)
-                self.add_sample_to_set(best_id, self.test_set)
-                split = self.test_set.split_type.value
+                set_1, set_2 = self.test_set, self.train_set
+                target_size = self.config.n_test
+
+            sorted_ids, best_id, debug_infos = self.find_best_sample(set_1, set_2)
+            # self.add_sample_to_set(best_id, set_1)
+            n_sample = min(self.config.n_sample_per_step, target_size - set_1.size)
+            for idx in sorted_ids[:n_sample]:
+                self.add_sample_to_set(idx, set_1)
+            split = set_1.split_type.value
             
             toc = time.perf_counter()
         
@@ -396,7 +403,7 @@ class DBCASplitter:
         
         
     @classmethod
-    def measure_sample_sets(cls, train_set: List[Sample], test_set: List[Sample]):
+    def measure_sample_sets(cls, train_set: List[Sample], test_set: List[Sample], config=None):
         """
         Measure atom and compound divergence between two existing sample sets.
     
@@ -417,7 +424,7 @@ class DBCASplitter:
             DBCASplitter object containing full split details.
         
         """
-        dbca_splitter = cls(train_set + test_set)
+        dbca_splitter = cls(train_set + test_set, config)
         for sample in train_set:
             dbca_splitter.add_sample_to_set(sample.id, dbca_splitter.train_set)
         
